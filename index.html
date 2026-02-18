@@ -9,6 +9,7 @@
         * {
             margin: 0;
             padding: 0;
+            cursor: none;
         }
 
         body {
@@ -40,16 +41,62 @@
             pointer-events: none;
             -webkit-text-stroke: 1px rgba(255, 255, 255, 0.7);
         }
+
+        /* Custom glowing cursor */
+        #cursor-glow {
+            position: fixed;
+            width: 22px;
+            height: 22px;
+            border-radius: 50%;
+            pointer-events: none;
+            z-index: 9999;
+            transform: translate(-50%, -50%);
+            border: 2px solid rgba(255, 105, 180, 0.8);
+            box-shadow:
+                0 0 8px rgba(255, 105, 180, 0.6),
+                0 0 20px rgba(255, 20, 147, 0.4),
+                0 0 40px rgba(255, 71, 171, 0.2),
+                inset 0 0 6px rgba(255, 105, 180, 0.3);
+            transition: width 0.15s, height 0.15s, box-shadow 0.15s;
+        }
+
+        #cursor-glow.active {
+            width: 16px;
+            height: 16px;
+            border-color: rgba(0, 255, 255, 0.9);
+            box-shadow:
+                0 0 12px rgba(0, 255, 255, 0.8),
+                0 0 30px rgba(255, 20, 147, 0.6),
+                0 0 50px rgba(255, 71, 171, 0.3),
+                inset 0 0 8px rgba(0, 255, 255, 0.4);
+        }
+
+        #cursor-trail {
+            position: fixed;
+            width: 38px;
+            height: 38px;
+            border-radius: 50%;
+            pointer-events: none;
+            z-index: 9998;
+            transform: translate(-50%, -50%);
+            border: 1px solid rgba(255, 71, 171, 0.25);
+            box-shadow: 0 0 15px rgba(255, 105, 180, 0.15);
+            transition: left 0.12s ease-out, top 0.12s ease-out, width 0.2s, height 0.2s;
+        }
     </style>
 </head>
 
 <body>
     <div id="text-container">I Love You</div>
     <canvas id="canvas"></canvas>
+    <div id="cursor-glow"></div>
+    <div id="cursor-trail"></div>
 
     <script>
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
+        const cursorGlow = document.getElementById('cursor-glow');
+        const cursorTrail = document.getElementById('cursor-trail');
         let W, H;
 
         function resize() {
@@ -61,8 +108,60 @@
 
         // ── Settings ──
         const PARTICLE_COUNT = 1500;
-        const COLORS = ['#00ffff', '#0044ff', '#ffffff'];
+        const COLORS = ['#00ffff', '#0044ff', '#ffffff', '#ff69b4', '#ff1493', '#ff47ab'];
+        const MOUSE_COLORS = ['#ff69b4', '#ff1493', '#ff47ab', '#00ffff', '#0088ff', '#ffffff', '#ff80c0', '#cc00ff'];
         const particles = [];
+
+        // ── Mouse tracking ──
+        let mouseX = -100, mouseY = -100;
+        let prevMouseX = -100, prevMouseY = -100;
+        let mouseSpeed = 0;
+        let isMouseOnCanvas = false;
+
+        document.addEventListener('mousemove', (e) => {
+            let dx = e.clientX - mouseX;
+            let dy = e.clientY - mouseY;
+            mouseSpeed = Math.sqrt(dx * dx + dy * dy);
+            prevMouseX = mouseX;
+            prevMouseY = mouseY;
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+            isMouseOnCanvas = true;
+
+            // Update custom cursor
+            cursorGlow.style.left = e.clientX + 'px';
+            cursorGlow.style.top = e.clientY + 'px';
+            cursorTrail.style.left = e.clientX + 'px';
+            cursorTrail.style.top = e.clientY + 'px';
+
+            // Spawn hover trail particles based on speed
+            let spawnCount = Math.min(Math.floor(mouseSpeed / 3) + 1, 8);
+            for (let i = 0; i < spawnCount; i++) {
+                // Interpolate between previous and current position for smoother trails
+                let t = i / spawnCount;
+                let ix = prevMouseX + (mouseX - prevMouseX) * t;
+                let iy = prevMouseY + (mouseY - prevMouseY) * t;
+                hoverParticles.push(new HoverParticle(ix, iy, mouseSpeed));
+            }
+        });
+
+        document.addEventListener('mouseleave', () => {
+            isMouseOnCanvas = false;
+            cursorGlow.style.left = '-100px';
+            cursorTrail.style.left = '-100px';
+        });
+
+        document.addEventListener('mousedown', () => {
+            cursorGlow.classList.add('active');
+            // Spawn burst of particles on click at mouse position
+            for (let i = 0; i < 25; i++) {
+                hoverParticles.push(new HoverParticle(mouseX, mouseY, 30, true));
+            }
+        });
+
+        document.addEventListener('mouseup', () => {
+            cursorGlow.classList.remove('active');
+        });
 
         // ── Heart filled point using implicit equation ──
         // (x² + y² - 1)³ - x²y³ ≤ 0
@@ -176,9 +275,10 @@
             ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
             ctx.fill();
 
-            // Bright core
+            // Bright core with pink accent
             let grad2 = ctx.createRadialGradient(cx, cy, 0, cx, cy, rx * 0.4);
-            grad2.addColorStop(0, 'rgba(100, 200, 255, 0.6)');
+            grad2.addColorStop(0, 'rgba(200, 150, 255, 0.6)');
+            grad2.addColorStop(0.5, 'rgba(255, 105, 180, 0.3)');
             grad2.addColorStop(1, 'rgba(0, 80, 255, 0)');
             ctx.fillStyle = grad2;
             ctx.beginPath();
@@ -223,12 +323,163 @@
             }
         }
 
+        // ── Mouse Hover Particle (Blast Effect) ──
+        const hoverParticles = [];
+
+        class HoverParticle {
+            constructor(x, y, speed, isBurst = false) {
+                this.x = x;
+                this.y = y;
+
+                if (isBurst) {
+                    // Burst mode — explode outward in all directions
+                    let angle = Math.random() * Math.PI * 2;
+                    let burstSpeed = Math.random() * 10 + 4;
+                    this.vx = Math.cos(angle) * burstSpeed;
+                    this.vy = Math.sin(angle) * burstSpeed;
+                    this.size = Math.random() * 4 + 2;
+                    this.decay = Math.random() * 0.012 + 0.008;
+                    this.hasGlow = true;
+                } else {
+                    // Trail mode — gentle scatter with directional influence
+                    let angle = Math.random() * Math.PI * 2;
+                    let baseSpeed = Math.random() * 3 + 1;
+                    let speedFactor = Math.min(speed / 15, 2.5);
+                    this.vx = Math.cos(angle) * baseSpeed * speedFactor;
+                    this.vy = Math.sin(angle) * baseSpeed * speedFactor - Math.random() * 1.5;
+                    this.size = Math.random() * 2.5 + 0.8;
+                    this.decay = Math.random() * 0.02 + 0.012;
+                    this.hasGlow = speed > 8;
+                }
+
+                this.color = MOUSE_COLORS[Math.floor(Math.random() * MOUSE_COLORS.length)];
+                this.alpha = 1;
+                this.gravity = 0.04 + Math.random() * 0.03;
+                this.friction = 0.96;
+
+                // Shimmer / sparkle effect
+                this.shimmerSpeed = Math.random() * 0.1 + 0.05;
+                this.shimmerPhase = Math.random() * Math.PI * 2;
+
+                // Rotation for sparkle shape
+                this.rotation = Math.random() * Math.PI * 2;
+                this.rotSpeed = (Math.random() - 0.5) * 0.2;
+
+                // Star or circle shape (random)
+                this.isStar = Math.random() < 0.3;
+            }
+
+            update() {
+                this.vy += this.gravity;
+                this.x += this.vx;
+                this.y += this.vy;
+                this.vx *= this.friction;
+                this.vy *= this.friction;
+                this.alpha -= this.decay;
+                this.size *= 0.995;
+                this.rotation += this.rotSpeed;
+                this.shimmerPhase += this.shimmerSpeed;
+                return this.alpha > 0 && this.size > 0.2;
+            }
+
+            draw() {
+                let shimmer = 0.5 + 0.5 * Math.sin(this.shimmerPhase);
+                let drawAlpha = this.alpha * (0.6 + shimmer * 0.4);
+                ctx.globalAlpha = drawAlpha;
+
+                if (this.hasGlow) {
+                    // Draw glow halo
+                    let glowGrad = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, this.size * 4);
+                    glowGrad.addColorStop(0, this.color);
+                    glowGrad.addColorStop(1, 'rgba(0,0,0,0)');
+                    ctx.fillStyle = glowGrad;
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, this.size * 4, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+
+                if (this.isStar) {
+                    // Draw a tiny 4-point star sparkle
+                    ctx.save();
+                    ctx.translate(this.x, this.y);
+                    ctx.rotate(this.rotation);
+                    ctx.fillStyle = this.color;
+                    ctx.beginPath();
+                    let s = this.size;
+                    for (let i = 0; i < 4; i++) {
+                        let a = (i / 4) * Math.PI * 2;
+                        ctx.lineTo(Math.cos(a) * s * 2, Math.sin(a) * s * 2);
+                        let a2 = a + Math.PI / 4;
+                        ctx.lineTo(Math.cos(a2) * s * 0.5, Math.sin(a2) * s * 0.5);
+                    }
+                    ctx.closePath();
+                    ctx.fill();
+                    ctx.restore();
+                } else {
+                    // Draw glowing circle
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                    ctx.fillStyle = this.color;
+                    ctx.fill();
+                }
+
+                ctx.globalAlpha = 1;
+            }
+        }
+
+        // ── Draw cursor glow on canvas ──
+        function drawMouseGlow() {
+            if (!isMouseOnCanvas) return;
+
+            // Outer soft glow
+            let glowGrad = ctx.createRadialGradient(mouseX, mouseY, 0, mouseX, mouseY, 60);
+            glowGrad.addColorStop(0, 'rgba(255, 105, 180, 0.12)');
+            glowGrad.addColorStop(0.3, 'rgba(255, 20, 147, 0.06)');
+            glowGrad.addColorStop(0.6, 'rgba(0, 255, 255, 0.03)');
+            glowGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+
+            ctx.globalCompositeOperation = 'lighter';
+            ctx.fillStyle = glowGrad;
+            ctx.beginPath();
+            ctx.arc(mouseX, mouseY, 60, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Inner bright core
+            let coreGrad = ctx.createRadialGradient(mouseX, mouseY, 0, mouseX, mouseY, 15);
+            coreGrad.addColorStop(0, 'rgba(255, 200, 230, 0.25)');
+            coreGrad.addColorStop(1, 'rgba(255, 105, 180, 0)');
+            ctx.fillStyle = coreGrad;
+            ctx.beginPath();
+            ctx.arc(mouseX, mouseY, 15, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
         // Spawn burst on click
         canvas.addEventListener('click', (e) => {
             for (let i = 0; i < 30; i++) {
                 clickParticles.push(new ClickParticle(e.clientX, e.clientY));
             }
         });
+
+        // ── Ambient floating sparkles near mouse ──
+        let sparkleTimer = 0;
+        function spawnAmbientSparkles() {
+            if (!isMouseOnCanvas) return;
+            sparkleTimer++;
+            if (sparkleTimer % 3 === 0) {
+                let angle = Math.random() * Math.PI * 2;
+                let dist = Math.random() * 35 + 10;
+                let sx = mouseX + Math.cos(angle) * dist;
+                let sy = mouseY + Math.sin(angle) * dist;
+                let p = new HoverParticle(sx, sy, 2);
+                p.size = Math.random() * 1.5 + 0.5;
+                p.isStar = Math.random() < 0.5;
+                p.vy = -Math.random() * 1 - 0.5;
+                p.vx = (Math.random() - 0.5) * 0.8;
+                p.decay = Math.random() * 0.015 + 0.008;
+                hoverParticles.push(p);
+            }
+        }
 
         // ── Initialize ──
         function init() {
@@ -250,7 +501,7 @@
             // Heartbeat pulsing scale
             let beat = Math.sin(Date.now() * 0.003) * 0.04 + 1.0;
 
-            // ADDITIVE BLENDING - overlapping cyan/blue/white creates intense neon
+            // ADDITIVE BLENDING - overlapping cyan/blue/white/pink creates intense neon
             ctx.globalCompositeOperation = 'lighter';
 
             // Update and draw heart particles
@@ -267,6 +518,21 @@
                     clickParticles[i].draw();
                 }
             }
+
+            // Update and draw mouse hover particles
+            for (let i = hoverParticles.length - 1; i >= 0; i--) {
+                if (!hoverParticles[i].update()) {
+                    hoverParticles.splice(i, 1);
+                } else {
+                    hoverParticles[i].draw();
+                }
+            }
+
+            // Draw cursor glow effect on canvas
+            drawMouseGlow();
+
+            // Spawn ambient sparkles near cursor
+            spawnAmbientSparkles();
 
             // Reset blend mode
             ctx.globalCompositeOperation = 'source-over';
