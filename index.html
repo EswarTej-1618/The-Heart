@@ -163,6 +163,68 @@
             cursorGlow.classList.remove('active');
         });
 
+        // ── Touch support for mobile ──
+        let isTouchDevice = false;
+
+        function handleTouchMove(e) {
+            e.preventDefault();
+            isTouchDevice = true;
+            // Hide custom cursor on touch devices
+            cursorGlow.style.display = 'none';
+            cursorTrail.style.display = 'none';
+
+            let touch = e.touches[0];
+            let dx = touch.clientX - mouseX;
+            let dy = touch.clientY - mouseY;
+            mouseSpeed = Math.sqrt(dx * dx + dy * dy);
+            prevMouseX = mouseX;
+            prevMouseY = mouseY;
+            mouseX = touch.clientX;
+            mouseY = touch.clientY;
+            isMouseOnCanvas = true;
+
+            // Spawn trail particles along finger path
+            let spawnCount = Math.min(Math.floor(mouseSpeed / 3) + 2, 10);
+            for (let i = 0; i < spawnCount; i++) {
+                let t = i / spawnCount;
+                let ix = prevMouseX + (mouseX - prevMouseX) * t;
+                let iy = prevMouseY + (mouseY - prevMouseY) * t;
+                hoverParticles.push(new HoverParticle(ix, iy, mouseSpeed));
+            }
+        }
+
+        function handleTouchStart(e) {
+            e.preventDefault();
+            isTouchDevice = true;
+            cursorGlow.style.display = 'none';
+            cursorTrail.style.display = 'none';
+
+            let touch = e.touches[0];
+            mouseX = touch.clientX;
+            mouseY = touch.clientY;
+            prevMouseX = mouseX;
+            prevMouseY = mouseY;
+            isMouseOnCanvas = true;
+
+            // Spawn burst particles on tap
+            for (let i = 0; i < 30; i++) {
+                hoverParticles.push(new HoverParticle(mouseX, mouseY, 30, true));
+            }
+
+            // Also spawn click particles for extra effect
+            for (let i = 0; i < 20; i++) {
+                clickParticles.push(new ClickParticle(mouseX, mouseY));
+            }
+        }
+
+        function handleTouchEnd(e) {
+            isMouseOnCanvas = false;
+        }
+
+        document.addEventListener('touchmove', handleTouchMove, { passive: false });
+        document.addEventListener('touchstart', handleTouchStart, { passive: false });
+        document.addEventListener('touchend', handleTouchEnd);
+
         // ── Heart filled point using implicit equation ──
         // (x² + y² - 1)³ - x²y³ ≤ 0
         function getFilledHeartPoint() {
