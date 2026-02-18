@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Glowing Particle Heart</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background-color: #000000;
+            overflow: hidden;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        #text-container {
+            position: absolute;
+            top: 10%;
+            width: 100%;
+            text-align: center;
+            color: #00aaff;
+            font-family: 'Comic Sans MS', cursive, sans-serif;
+            font-size: 3.5rem;
+            text-shadow:
+                0 0 7px #00aaff,
+                0 0 15px #00aaff,
+                0 0 25px #0077ff,
+                0 0 40px #0055ff,
+                0 0 60px #0033ff;
+            z-index: 10;
+            pointer-events: none;
+            -webkit-text-stroke: 1px rgba(255, 255, 255, 0.7);
+        }
+    </style>
+</head>
+
+<body>
+    <div id="text-container">I Love You</div>
+    <canvas id="canvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        let W, H;
+
+        function resize() {
+            W = canvas.width = window.innerWidth;
+            H = canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        // ── Settings ──
+        const PARTICLE_COUNT = 1500;
+        const COLORS = ['#00ffff', '#0044ff', '#ffffff'];
+        const particles = [];
+
+        // ── Heart filled point using implicit equation ──
+        // (x² + y² - 1)³ - x²y³ ≤ 0
+        function getFilledHeartPoint() {
+            let x, y;
+            while (true) {
+                x = (Math.random() - 0.5) * 2.6;
+                y = (Math.random() - 0.5) * 2.6;
+                let x2 = x * x;
+                let y2 = y * y;
+                if (Math.pow(x2 + y2 - 1, 3) - x2 * y * y2 <= 0) {
+                    break;
+                }
+            }
+            return { x, y };
+        }
+
+        // ── Particle ──
+        class Particle {
+            constructor() {
+                // Get a target inside the heart (in normalized coords)
+                let pt = getFilledHeartPoint();
+                this.heartX = pt.x;
+                this.heartY = pt.y;
+
+                // Start from bottom center (fountain base)
+                this.x = W / 2 + (Math.random() - 0.5) * 80;
+                this.y = H * 0.78;
+
+                // Velocity
+                this.vx = (Math.random() - 0.5) * 8;
+                this.vy = (Math.random() - 0.5) * 8;
+
+                // Swarming physics
+                this.friction = 0.92 + Math.random() * 0.04;
+                this.ease = 0.02 + Math.random() * 0.04;
+
+                // Orbit properties (swirl around target point)
+                this.orbitAngle = Math.random() * Math.PI * 2;
+                this.orbitSpeed = (Math.random() * 0.03 + 0.01) * (Math.random() < 0.5 ? 1 : -1);
+                this.orbitRadius = Math.random() * 6 + 2;
+
+                // Appearance
+                this.size = Math.random() * 1.5 + 0.5;
+                this.color = COLORS[Math.floor(Math.random() * COLORS.length)];
+
+                // Per-particle noise offset
+                this.offset = Math.random() * 100;
+            }
+
+            update(beatScale) {
+                // Calculate scaled heart target position
+                let scale = Math.min(W, H) / 3.5;
+                let targetX = this.heartX * scale + W / 2;
+                let targetY = -this.heartY * scale + H * 0.40;
+
+                // Apply heartbeat scale from center of heart
+                let heartCenterX = W / 2;
+                let heartCenterY = H * 0.40;
+                targetX = heartCenterX + (targetX - heartCenterX) * beatScale;
+                targetY = heartCenterY + (targetY - heartCenterY) * beatScale;
+
+                // Update orbit angle
+                this.orbitAngle += this.orbitSpeed;
+
+                // Add orbit offset to create swirling
+                let orbitX = Math.cos(this.orbitAngle) * this.orbitRadius;
+                let orbitY = Math.sin(this.orbitAngle) * this.orbitRadius;
+
+                // Pull toward target + orbit position
+                let dx = (targetX + orbitX) - this.x;
+                let dy = (targetY + orbitY) - this.y;
+
+                // Add slight noise for organic vibration
+                let noiseX = Math.sin(Date.now() * 0.002 + this.offset) * 1.0;
+                let noiseY = Math.cos(Date.now() * 0.002 + this.offset) * 1.0;
+
+                this.vx += (dx * this.ease) + noiseX;
+                this.vy += (dy * this.ease) + noiseY;
+
+                this.vx *= this.friction;
+                this.vy *= this.friction;
+
+                this.x += this.vx;
+                this.y += this.vy;
+            }
+
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fillStyle = this.color;
+                ctx.fill();
+            }
+        }
+
+        // ── Draw glowing base platform ──
+        function drawPlatform() {
+            let cx = W / 2;
+            let cy = H * 0.78;
+            let rx = W * 0.18;
+            let ry = 16;
+
+            let grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, rx);
+            grad.addColorStop(0, 'rgba(0, 150, 255, 0.5)');
+            grad.addColorStop(0.5, 'rgba(0, 120, 255, 0.3)');
+            grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+
+            ctx.globalCompositeOperation = 'source-over';
+            ctx.fillStyle = grad;
+            ctx.beginPath();
+            ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Bright core
+            let grad2 = ctx.createRadialGradient(cx, cy, 0, cx, cy, rx * 0.4);
+            grad2.addColorStop(0, 'rgba(100, 200, 255, 0.6)');
+            grad2.addColorStop(1, 'rgba(0, 80, 255, 0)');
+            ctx.fillStyle = grad2;
+            ctx.beginPath();
+            ctx.ellipse(cx, cy, rx * 0.5, ry * 0.5, 0, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        // ── Click Burst Particles ──
+        const clickParticles = [];
+
+        class ClickParticle {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                let angle = Math.random() * Math.PI * 2;
+                let speed = Math.random() * 8 + 3;
+                this.vx = Math.cos(angle) * speed;
+                this.vy = Math.sin(angle) * speed;
+                this.gravity = 0.12;
+                this.size = Math.random() * 3 + 1.5;
+                this.color = COLORS[Math.floor(Math.random() * COLORS.length)];
+                this.alpha = 1;
+                this.decay = Math.random() * 0.015 + 0.01;
+            }
+
+            update() {
+                this.vy += this.gravity;
+                this.x += this.vx;
+                this.y += this.vy;
+                this.vx *= 0.98;
+                this.alpha -= this.decay;
+                return this.alpha > 0;
+            }
+
+            draw() {
+                ctx.globalAlpha = this.alpha;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fillStyle = this.color;
+                ctx.fill();
+                ctx.globalAlpha = 1;
+            }
+        }
+
+        // Spawn burst on click
+        canvas.addEventListener('click', (e) => {
+            for (let i = 0; i < 30; i++) {
+                clickParticles.push(new ClickParticle(e.clientX, e.clientY));
+            }
+        });
+
+        // ── Initialize ──
+        function init() {
+            for (let i = 0; i < PARTICLE_COUNT; i++) {
+                particles.push(new Particle());
+            }
+        }
+
+        // ── Animation loop ──
+        function animate() {
+            // Motion trails (comet effect) - semi-transparent black, NOT full clear
+            ctx.globalCompositeOperation = 'source-over';
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.15)';
+            ctx.fillRect(0, 0, W, H);
+
+            // Draw platform
+            drawPlatform();
+
+            // Heartbeat pulsing scale
+            let beat = Math.sin(Date.now() * 0.003) * 0.04 + 1.0;
+
+            // ADDITIVE BLENDING - overlapping cyan/blue/white creates intense neon
+            ctx.globalCompositeOperation = 'lighter';
+
+            // Update and draw heart particles
+            for (let i = 0; i < particles.length; i++) {
+                particles[i].update(beat);
+                particles[i].draw();
+            }
+
+            // Update and draw click burst particles
+            for (let i = clickParticles.length - 1; i >= 0; i--) {
+                if (!clickParticles[i].update()) {
+                    clickParticles.splice(i, 1);
+                } else {
+                    clickParticles[i].draw();
+                }
+            }
+
+            // Reset blend mode
+            ctx.globalCompositeOperation = 'source-over';
+
+            requestAnimationFrame(animate);
+        }
+
+        init();
+        animate();
+    </script>
+</body>
+
+</html>
